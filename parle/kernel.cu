@@ -10,6 +10,8 @@
 #include "chag/pp/prefix.cuh"
 #include "chag/pp/reduce.cuh"
 
+#include <uc/img/img.h>
+
 namespace pp = chag::pp;
 
 // global host memory arrays.
@@ -258,8 +260,6 @@ void profileGpu(F rle, G dataGen) {
         float ms;
         cudaEventElapsedTime(&ms, start, stop);
 
-
-
         printf("For n = %d, in time %.5f microseconds\n", n, (ms / ((float)PROFILING_TESTS)) *1000.0f);
     }
 }
@@ -322,14 +322,11 @@ int main(){
     printf("profile compressible CPU\n");
     profileCpu(rleCpu, generateCompressibleRandomData);
 
-
     printf("profile random GPU\n");
     profileGpu(parleHost, generateRandomData);
 
     printf("profile compressible GPU\n");
     profileGpu(parleHost, generateCompressibleRandomData);
-
-
 
     // We run this code when we wish to run NVPP on the algorithm. 
     /*
