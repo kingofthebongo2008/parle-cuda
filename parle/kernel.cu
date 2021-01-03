@@ -10,9 +10,123 @@
 #include "chag/pp/prefix.cuh"
 #include "chag/pp/reduce.cuh"
 
+//Image loading
 #include <uc/img/img.h>
+#include <uc/util/utf8_conv.h>
+#include <uc/os/windows/com_initializer.h>
 
 namespace pp = chag::pp;
+
+namespace image
+{
+    struct yuv_image
+    {
+        std::vector<uint8_t> m_pixels;
+        uint32_t             m_width;
+        uint32_t             m_height;
+        uint32_t             m_row_pitch;
+
+        uint8_t* y_plane()
+        {
+            return &m_pixels[0];
+        }
+
+        uint8_t* u_plane()
+        {
+            const uint32_t  w   = m_width;
+            const uint32_t  h   = m_height;
+
+            uint8_t* y_plane    = &m_pixels[0];
+            uint8_t* u_plane    = &m_pixels[0] + size_t(w) * size_t(h);
+            uint8_t* v_plane    = &m_pixels[0] + size_t(2) * size_t(w) * size_t(h);
+
+            return u_plane;
+        }
+
+        uint8_t* v_plane()
+        {
+            const uint32_t  w = m_width;
+            const uint32_t  h = m_height;
+
+            uint8_t* y_plane = &m_pixels[0];
+            uint8_t* u_plane = &m_pixels[0] + size_t(w) * size_t(h);
+            uint8_t* v_plane = &m_pixels[0] + size_t(2) * size_t(w) * size_t(h);
+
+            return v_plane;
+        }
+
+        size_t plane_size() const
+        {
+            const uint32_t  w = m_width;
+            const uint32_t  h = m_height;
+            return size_t(w) * size_t(h);
+        }
+    };
+
+    inline uint8_t clip(uint8_t x)
+    {
+        return ((x) > 255 ? 255 : (x) < 0 ? 0 : x);
+    }
+
+    inline uint8_t rgb2y(uint8_t r, uint8_t g, uint8_t b)
+    {
+        return clip(((66 * (r)+129 * (g)+25 * (b)+128) >> 8) + 16);
+    }
+
+    inline uint8_t rgb2u(uint8_t r, uint8_t g, uint8_t b)
+    {
+        return clip(((-38 * (r)-74 * (g)+112 * (b)+128) >> 8) + 128);
+    }
+
+    inline uint8_t rgb2v(uint8_t r, uint8_t g, uint8_t b)
+    {
+        return clip(((112 * (r)-94 * (g)-18 * (b)+128) >> 8) + 128);
+    }
+
+    yuv_image to_yuv(const uc::gx::imaging::cpu_texture& bgra)
+    {
+        yuv_image r;
+        const uint32_t  w = bgra.width();
+        const uint32_t  h = bgra.height();
+        r.m_pixels.resize(size_t(w) * size_t(h) * 3U);
+
+        r.m_width = w;
+        r.m_height = h;
+        r.m_row_pitch = bgra.row_pitch();
+
+        uint8_t* y_plane = &r.m_pixels[0];
+        uint8_t* u_plane = &r.m_pixels[0] + size_t(w) * size_t(h);
+        uint8_t* v_plane = &r.m_pixels[0] + size_t(2) * size_t(w) * size_t(h);
+
+        const auto p = bgra.pixels();
+
+        for (auto i = 0U; i < h; ++i)
+        {
+            const uint8_t* row = p.get_pixels_cpu() + size_t(i) * bgra.row_pitch();
+            uint8_t* y_row = y_plane + size_t(i) * size_t(w);
+            uint8_t* u_row = u_plane + size_t(i) * size_t(w);
+            uint8_t* v_row = v_plane + size_t(i) * size_t(w);
+
+            for (auto j = 0U; j < w; ++j)
+            {
+                uint8_t b = row[4 * j];
+                uint8_t g = row[4 * j + 1];
+                uint8_t r = row[4 * j + 2];
+                uint8_t a = row[4 * j + 3];
+
+                uint8_t* y = y_row + size_t(j);
+                uint8_t* u = u_row + size_t(j);
+                uint8_t* v = v_row + size_t(j);
+
+                *y = rgb2y(r, g, b);
+                *u = rgb2u(r, g, b);
+                *v = rgb2v(r, g, b);
+            }
+        }
+
+        return r;
+    }
+}
 
 // global host memory arrays.
 int* g_symbolsOut;
@@ -57,8 +171,8 @@ int parleHost(int *h_in, int n,
     int* h_symbolsOut,
     int* h_countsOut);
 
-int rleCpu(int *in, int n,
-    int* symbolsOut,
+int rleCpu(uint8_t *in, int n,
+    uint8_t* symbolsOut,
     int* countsOut);
 
 __global__ void compactKernel(int* g_in, int* g_scannedBackwardMask, int* g_compactedBackwardMask, int* g_totalRuns, int n) {
@@ -110,8 +224,8 @@ void PrintArray(int* arr, int n){
 char errorString[256];
 
 bool verifyCompression(
-    int* original, int n,
-    int* compressedSymbols, int* compressedCounts, int totalRuns){
+    uint8_t* original, int n,
+    uint8_t* compressedSymbols, int* compressedCounts, int totalRuns, uint8_t* g_temp_buffer){
 
     // decompress.
     int j = 0;
@@ -138,13 +252,13 @@ bool verifyCompression(
         int count = compressedCounts[i];
 
         for (int k = 0; k < count; ++k){
-            g_decompressed[j++] = symbol;
+            g_temp_buffer[j++] = symbol;
         }
     }
 
     // verify the compression.
     for (int i = 0; i < n; ++i) {
-        if (original[i] != g_decompressed[i]){
+        if (original[i] != g_temp_buffer[i]){
 
             sprintf(errorString, "Decompressed and original not equal at %d, %d != %d\n", i, original[i], g_decompressed[i]);
             return false;
@@ -197,6 +311,7 @@ void unitTest(int* in, int n, F f, bool verbose)
         printf("Compressed Size: %d\n", totalRuns * 2);
     }
 
+    /*
     if (!verifyCompression(
         in, n,
         g_symbolsOut, g_countsOut, totalRuns)) {
@@ -209,6 +324,7 @@ void unitTest(int* in, int n, F f, bool verbose)
         if (verbose)
             printf("passed test!\n\n");
     }
+    */
 }
 
 // profile some RLE implementation on the CPU.
@@ -289,6 +405,56 @@ void runTests(int a, F f) {
 
 int main(){
 
+    image::yuv_image yuv;
+    {
+        try
+        {
+            using namespace uc::gx::imaging;
+            uc::os::windows::com_initializer c;
+
+            const std::wstring w = L"data\\test-image.png";
+            const auto image = read_image(w.c_str());
+
+            yuv = image::to_yuv(image);
+        }
+
+        catch (...)
+        {
+            return -1;
+        }
+    }
+
+    //compress y
+    {
+
+        std::vector<uint8_t> symbols_out(yuv.plane_size() * 2);
+        std::vector<int32_t> symbols_count(yuv.plane_size() * 2);
+        std::vector<uint8_t> work_buffer(yuv.plane_size() * 2);
+
+        int32_t symbols_y = rleCpu(yuv.y_plane(), yuv.plane_size(), &symbols_out[0], &symbols_count[0]);
+
+        verifyCompression(yuv.y_plane(), yuv.plane_size(), &symbols_out[0], &symbols_count[0], symbols_y, &work_buffer[0]);
+    }
+
+    //compress u
+    {
+        std::vector<uint8_t> symbols_out(yuv.plane_size() * 2);
+        std::vector<int32_t> symbols_count(yuv.plane_size() * 2);
+        std::vector<uint8_t> work_buffer(yuv.plane_size() * 2);
+        int32_t symbols_u = rleCpu(yuv.u_plane(), yuv.plane_size(), &symbols_out[0], &symbols_count[0]);
+        verifyCompression(yuv.u_plane(), yuv.plane_size(), &symbols_out[0], &symbols_count[0], symbols_u, &work_buffer[0]);
+    }
+
+    //compress v
+    {
+        std::vector<uint8_t> symbols_out(yuv.plane_size() * 2);
+        std::vector<int32_t> symbols_count(yuv.plane_size() * 2);
+        std::vector<uint8_t> work_buffer(yuv.plane_size() * 2);
+
+        int32_t symbols_v = rleCpu(yuv.v_plane(), yuv.plane_size(), &symbols_out[0], &symbols_count[0]);
+        verifyCompression(yuv.v_plane(), yuv.plane_size(), &symbols_out[0], &symbols_count[0], symbols_v, &work_buffer[0]);
+    }
+
     srand(1000);
     CUDA_CHECK(cudaSetDevice(0));
 
@@ -297,9 +463,9 @@ int main(){
     CUDA_CHECK(cudaMalloc((void**)&d_scannedBackwardMask, MAX_N * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void**)&d_compactedBackwardMask, (MAX_N + 1) * sizeof(int)));
 
-    CUDA_CHECK(cudaMalloc((void**)&d_in, MAX_N* sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_in, MAX_N* sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc((void**)&d_countsOut, MAX_N * sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_symbolsOut, MAX_N * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_symbolsOut, MAX_N * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc((void**)&d_totalRuns, sizeof(int)));
 
     // allocate resources on the host. 
@@ -308,31 +474,17 @@ int main(){
     g_symbolsOut = new int[MAX_N];
     g_countsOut = new int[MAX_N];
 
-    // We run this code to run many unit tests on the code
-    /*
-    runTests(21, rleCpu);
-    runTests(21, parleHost);
-    */
-
     // We run this code to profile the performance. 
-
-    printf("profile random CPU\n");
-    profileCpu(rleCpu, generateRandomData);
-
     printf("profile compressible CPU\n");
-    profileCpu(rleCpu, generateCompressibleRandomData);
+    //profileCpu(rleCpu, generateCompressibleRandomData);
 
-    printf("profile random GPU\n");
-    profileGpu(parleHost, generateRandomData);
+    //printf("profile random GPU\n");
+    //profileGpu(parleHost, generateRandomData);
 
-    printf("profile compressible GPU\n");
-    profileGpu(parleHost, generateCompressibleRandomData);
+    //printf("profile compressible GPU\n");
+    //profileGpu(parleHost, generateCompressibleRandomData);
 
     // We run this code when we wish to run NVPP on the algorithm. 
-    /*
-    int n = 1 << 23;
-    unitTest(generateCompressibleRandomData(1<<23), n, rleGpu, true);
-    */
 
     // free device arrays.
     CUDA_CHECK(cudaFree(d_backwardMask));
@@ -358,7 +510,7 @@ int main(){
 
 
 // implementation of RLE on CPU.
-int rleCpu(int *in, int n, int* symbolsOut, int* countsOut){
+int rleCpu(uint8_t *in, int n, uint8_t* symbolsOut, int* countsOut){
 
     if (n == 0)
         return 0; // nothing to compress!
@@ -388,7 +540,6 @@ int rleCpu(int *in, int n, int* symbolsOut, int* countsOut){
     symbolsOut[outIndex] = symbol;
     countsOut[outIndex] = count;
     outIndex++;
-
     return outIndex;
 }
 
