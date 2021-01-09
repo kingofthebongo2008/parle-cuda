@@ -289,7 +289,7 @@ void runTests(int a, F f) {
 }
 
 int main(){
-
+    
     {
         try
         {
@@ -304,7 +304,6 @@ int main(){
             const auto width     = image.width() * 4;
 
             //invert the image for webgl
-
             std::vector<uint32_t> ints(s);
             for (auto i = 0; i < image.height(); ++i)
             {
@@ -312,6 +311,27 @@ int main(){
                     uint32_t*   dst = &ints[0]  + (image.height() - 1 - i) * image.width();
 
                 std::memcpy(dst, src, image.row_pitch());
+            }
+
+            //convert from bgra to rgba
+            for (auto i = 0; i < image.height(); ++i)
+            {
+                uint32_t* row = &ints[0] + i * image.width();
+
+                for (auto j = 0; j < image.width(); ++j)
+                {
+                    uint32_t* value = row + j;
+                    uint8_t*      v = reinterpret_cast<uint8_t*>(value);
+                    uint8_t       b = v[0];
+                    uint8_t       g = v[1];
+                    uint8_t       r = v[2];
+                    uint8_t       a = v[3];
+
+                    v[0] = r;
+                    v[1] = g;
+                    v[2] = b;
+                    v[3] = a;
+                }
             }
 
             std::vector<uint32_t> symbols(s);
