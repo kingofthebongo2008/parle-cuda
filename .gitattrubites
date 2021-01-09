@@ -1,0 +1,8 @@
+*.jpg binary
+*.exe binary
+*.so  binary
+*.dll binary
+*.png binary
+*.psd binary
+*.lib binary
+*.pdb binary
