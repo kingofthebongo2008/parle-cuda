@@ -13,6 +13,7 @@
 #include <uc/img/img.h>
 #include <uc/os/windows/com_initializer.h>
 #include <string>
+#include <iomanip>
 #include <iostream>
 
 namespace pp = chag::pp;
@@ -57,7 +58,7 @@ void parleDevice(uint32_t*d_in, int32_t n,
     );
 
 int parleHost(uint32_t*h_in, int32_t n, uint32_t* h_symbolsOut, uint32_t* h_countsOut);
-int rleCpu(uint32_t *in, int32_t n, uint32_t* symbolsOut, uint32_t* countsOut);
+int rleCpu(const uint32_t *in, int32_t n, uint32_t* symbolsOut, uint32_t* countsOut);
 
 __global__ void compactKernel(uint32_t* g_in, uint32_t* g_scannedBackwardMask, uint32_t* g_compactedBackwardMask, uint32_t* g_totalRuns, int32_t n)
 {
@@ -110,7 +111,7 @@ void PrintArray(uint32_t* arr, int n){
 char errorString[256];
 
 bool verifyCompression(
-    uint32_t* original, int n,
+    const uint32_t* original, int n,
     uint32_t* compressedSymbols, uint32_t* compressedCounts, int totalRuns){
 
     // decompress.
@@ -289,7 +290,6 @@ void runTests(int a, F f) {
 
 int main(){
 
-    /*
     {
         try
         {
@@ -298,15 +298,19 @@ int main(){
             
             const std::wstring w = L"data\\test-image.png";
             const auto image     = read_image(w.c_str());
-            const auto bytes     = image.pixels().get_pixels_cpu();
+            const auto bytes     = reinterpret_cast<const uint32_t*>(image.pixels().get_pixels_cpu());
+            const auto s         = int32_t((image.size() / 4));
             const auto pitch     = image.row_pitch();
             const auto width     = image.width() * 4;
+
+            std::vector<uint32_t> symbols(s);
+            std::vector<uint32_t> symbols_count(s);
 
             #if defined(EXPORT_DATA)
             for (auto i = 0; i < image.size(); ++i)
             {
                 if (i % pitch == 0)
-                {
+                {   
                     std::cout << "\n";
                 }
 
@@ -314,6 +318,48 @@ int main(){
                 std::cout << b << ", ";
             }
             #endif
+
+            int results = rleCpu(bytes, s, &symbols[0], &symbols_count[0]);
+
+            symbols.resize(results);
+            symbols_count.resize(results);
+
+            #define EXPORT_DATA1
+
+            #if defined(EXPORT_DATA)
+            std::cout << "const symbols = new Uint32Array( [ " << std::endl;
+            for (auto i = 0; i < symbols.size(); ++i)
+            {
+                if (i % 16 == 0)
+                {
+                    std::cout << "\n";
+                }
+
+                uint32_t b = symbols[i];
+                std::cout << "0x" << std::setfill('0') << std::setw(8) << std::hex << b << ", ";
+            }
+            std::cout << "]);\n";
+
+            std::cout << "const symbols_count = new Uint32Array( [ " << std::endl;
+
+            for (auto i = 0; i < symbols_count.size(); ++i)
+            {
+                if (i % 16 == 0)
+                {
+                    std::cout << "\n";
+                }
+
+                uint32_t b = symbols_count[i];
+                std::cout << "0x" << std::setfill('0') << std::setw(8) << std::hex << b << ", ";
+            }
+            std::cout << "]);\n";
+            #endif
+            
+            g_decompressed = new uint32_t[MAX_N];
+            verifyCompression(bytes, s, &symbols[0], &symbols_count[0], results);
+
+            return 0;
+    
         }
 
         catch (...)
@@ -323,7 +369,7 @@ int main(){
     }
 
     return 0;
-    */
+
 
     srand(1000);
     CUDA_CHECK(cudaSetDevice(0));
@@ -394,7 +440,7 @@ int main(){
 
 
 // implementation of RLE on CPU.
-int rleCpu(uint32_t*in, int32_t n, uint32_t* symbolsOut, uint32_t* countsOut){
+int rleCpu(const uint32_t* in, int32_t n, uint32_t* symbolsOut, uint32_t* countsOut){
 
     if (n == 0)
         return 0; // nothing to compress!
