@@ -11,23 +11,26 @@
 #include "chag/pp/reduce.cuh"
 
 #include <uc/img/img.h>
+#include <uc/os/windows/com_initializer.h>
+#include <string>
+#include <iostream>
 
 namespace pp = chag::pp;
 
 // global host memory arrays.
-int* g_symbolsOut;
-int* g_countsOut;
-int* g_in;
-int* g_decompressed;
+uint32_t* g_symbolsOut;
+uint32_t* g_countsOut;
+uint32_t* g_in;
+uint32_t* g_decompressed;
 
 // Device memory used in PARLE
-int* d_symbolsOut;
-int* d_countsOut;
-int* d_in;
-int* d_totalRuns;
-int* d_backwardMask;
-int* d_scannedBackwardMask;
-int* d_compactedBackwardMask;
+uint32_t* d_symbolsOut;
+uint32_t* d_countsOut;
+uint32_t* d_in;
+uint32_t* d_totalRuns;
+uint32_t* d_backwardMask;
+uint32_t* d_scannedBackwardMask;
+uint32_t* d_compactedBackwardMask;
 
 const int NUM_TESTS = 11;
 const int Tests[NUM_TESTS] = {
@@ -47,21 +50,17 @@ const int Tests[NUM_TESTS] = {
 const int PROFILING_TESTS = 100;
 const int MAX_N = 1 << 26; // max size of any array that we use.
 
-void parleDevice(int *d_in, int n,
-    int* d_symbolsOut,
-    int* d_countsOut,
-    int* d_totalRuns
+void parleDevice(uint32_t*d_in, int32_t n,
+    uint32_t* d_symbolsOut,
+    uint32_t* d_countsOut,
+    uint32_t* d_totalRuns
     );
 
-int parleHost(int *h_in, int n,
-    int* h_symbolsOut,
-    int* h_countsOut);
+int parleHost(uint32_t*h_in, int32_t n, uint32_t* h_symbolsOut, uint32_t* h_countsOut);
+int rleCpu(uint32_t *in, int32_t n, uint32_t* symbolsOut, uint32_t* countsOut);
 
-int rleCpu(int *in, int n,
-    int* symbolsOut,
-    int* countsOut);
-
-__global__ void compactKernel(int* g_in, int* g_scannedBackwardMask, int* g_compactedBackwardMask, int* g_totalRuns, int n) {
+__global__ void compactKernel(uint32_t* g_in, uint32_t* g_scannedBackwardMask, uint32_t* g_compactedBackwardMask, uint32_t* g_totalRuns, int32_t n)
+{
     for (int i : hemi::grid_stride_range(0, n)) {
 
         if (i == (n - 1)) {
@@ -78,10 +77,11 @@ __global__ void compactKernel(int* g_in, int* g_scannedBackwardMask, int* g_comp
     }
 }
 
-__global__ void scatterKernel(int* g_compactedBackwardMask, int* g_totalRuns, int* g_in, int* g_symbolsOut, int* g_countsOut) {
+__global__ void scatterKernel(uint32_t* g_compactedBackwardMask, uint32_t* g_totalRuns, uint32_t* g_in, uint32_t* g_symbolsOut, uint32_t* g_countsOut) {
     int n = *g_totalRuns;
 
-    for (int i : hemi::grid_stride_range(0, n)) {
+    for (int i : hemi::grid_stride_range(0, n))
+    {
         int a = g_compactedBackwardMask[i];
         int b = g_compactedBackwardMask[i + 1];
 
@@ -90,7 +90,7 @@ __global__ void scatterKernel(int* g_compactedBackwardMask, int* g_totalRuns, in
     }
 }
 
-__global__ void maskKernel(int *g_in, int* g_backwardMask, int n) {
+__global__ void maskKernel(uint32_t* g_in, uint32_t* g_backwardMask, int n) {
     for (int i : hemi::grid_stride_range(0, n)) {
         if (i == 0)
             g_backwardMask[i] = 1;
@@ -100,7 +100,7 @@ __global__ void maskKernel(int *g_in, int* g_backwardMask, int n) {
     }
 }
 
-void PrintArray(int* arr, int n){
+void PrintArray(uint32_t* arr, int n){
     for (int i = 0; i < n; ++i){
         printf("%d, ", arr[i]);
     }
@@ -110,13 +110,13 @@ void PrintArray(int* arr, int n){
 char errorString[256];
 
 bool verifyCompression(
-    int* original, int n,
-    int* compressedSymbols, int* compressedCounts, int totalRuns){
+    uint32_t* original, int n,
+    uint32_t* compressedSymbols, uint32_t* compressedCounts, int totalRuns){
 
     // decompress.
     int j = 0;
 
-    int sum = 0;
+    uint32_t sum = 0;
     for (int i = 0; i < totalRuns; ++i) {
         sum += compressedCounts[i];
     }
@@ -158,7 +158,7 @@ bool verifyCompression(
 // the kind of data generated is like
 // 1,1,1,1,4,4,4,4,7,7,7,7,....
 // so there's lots of repeated sequences. 
-int* generateCompressibleRandomData(int n){
+uint32_t* generateCompressibleRandomData(int n){
     int val = rand() % 10;
 
     for (int i = 0; i < n; ++i) {
@@ -176,7 +176,7 @@ int* generateCompressibleRandomData(int n){
 // the kind of data generated is like
 // 1,5,8,4,2,6,....
 // so it's completely random.
-int* generateRandomData(int n){
+uint32_t* generateRandomData(int n){
     for (int i = 0; i < n; ++i) {
         g_in[i] = rand() % 10;;
 
@@ -187,7 +187,7 @@ int* generateRandomData(int n){
 
 // use f to RLE compresss the data, and then verify the compression. 
 template<typename F>
-void unitTest(int* in, int n, F f, bool verbose)
+void unitTest(uint32_t* in, int n, F f, bool verbose)
 {
     int totalRuns = f(in, n, g_symbolsOut, g_countsOut);
 
@@ -216,7 +216,7 @@ template<typename F, typename G>
 void profileCpu(F rle, G dataGen) {
     for (int i = 0; i < NUM_TESTS; ++i) {
         int n = Tests[i];
-        int* in = dataGen(n);
+        uint32_t* in = dataGen(n);
 
         StartCounter();
 
@@ -241,7 +241,7 @@ void profileGpu(F rle, G dataGen) {
     for (int i = 0; i < NUM_TESTS; ++i) {
 
         int n = Tests[i];
-        int* in = dataGen(n);
+        uint32_t* in = dataGen(n);
 
         // transer input data to device.
         CUDA_CHECK(cudaMemcpy(d_in, in, n*sizeof(int), cudaMemcpyHostToDevice));
@@ -279,7 +279,7 @@ void runTests(int a, F f) {
                 n = (int)(n * (0.6f + 1.3f * (rand() / (float)RAND_MAX)));
             }
 
-            int* in = generateCompressibleRandomData(n);
+            uint32_t* in = generateCompressibleRandomData(n);
 
             unitTest(in, n, f, true);
         }
@@ -289,24 +289,60 @@ void runTests(int a, F f) {
 
 int main(){
 
+    /*
+    {
+        try
+        {
+            using namespace uc::gx::imaging;
+            uc::os::windows::com_initializer c;
+            
+            const std::wstring w = L"data\\test-image.png";
+            const auto image     = read_image(w.c_str());
+            const auto bytes     = image.pixels().get_pixels_cpu();
+            const auto pitch     = image.row_pitch();
+            const auto width     = image.width() * 4;
+
+            #if defined(EXPORT_DATA)
+            for (auto i = 0; i < image.size(); ++i)
+            {
+                if (i % pitch == 0)
+                {
+                    std::cout << "\n";
+                }
+
+                int32_t b = bytes[i];
+                std::cout << b << ", ";
+            }
+            #endif
+        }
+
+        catch (...)
+        {
+            return -1;
+        }
+    }
+
+    return 0;
+    */
+
     srand(1000);
     CUDA_CHECK(cudaSetDevice(0));
 
     // allocate resources on device. These arrays are used globally thoughouts the program.
-    CUDA_CHECK(cudaMalloc((void**)&d_backwardMask, MAX_N * sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_scannedBackwardMask, MAX_N * sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_compactedBackwardMask, (MAX_N + 1) * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_backwardMask, MAX_N * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc((void**)&d_scannedBackwardMask, MAX_N * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc((void**)&d_compactedBackwardMask, (MAX_N + 1) * sizeof(uint32_t)));
 
-    CUDA_CHECK(cudaMalloc((void**)&d_in, MAX_N* sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_countsOut, MAX_N * sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_symbolsOut, MAX_N * sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_totalRuns, sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_in, MAX_N* sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc((void**)&d_countsOut, MAX_N * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc((void**)&d_symbolsOut, MAX_N * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc((void**)&d_totalRuns, sizeof(uint32_t)));
 
     // allocate resources on the host. 
-    g_in = new int[MAX_N];
-    g_decompressed = new int[MAX_N];
-    g_symbolsOut = new int[MAX_N];
-    g_countsOut = new int[MAX_N];
+    g_in = new uint32_t[MAX_N];
+    g_decompressed = new uint32_t[MAX_N];
+    g_symbolsOut = new uint32_t[MAX_N];
+    g_countsOut = new uint32_t[MAX_N];
 
     // We run this code to run many unit tests on the code
     /*
@@ -358,16 +394,16 @@ int main(){
 
 
 // implementation of RLE on CPU.
-int rleCpu(int *in, int n, int* symbolsOut, int* countsOut){
+int rleCpu(uint32_t*in, int32_t n, uint32_t* symbolsOut, uint32_t* countsOut){
 
     if (n == 0)
         return 0; // nothing to compress!
 
-    int outIndex = 0;
-    int symbol = in[0];
-    int count = 1;
+    uint32_t outIndex = 0;
+    uint32_t symbol = in[0];
+    uint32_t count = 1;
 
-    for (int i = 1; i < n; ++i) {
+    for (uint32_t i = 1U; i < n; ++i) {
         if (in[i] != symbol) {
             // run is over.
             // So output run.
@@ -379,7 +415,8 @@ int rleCpu(int *in, int n, int* symbolsOut, int* countsOut){
             symbol = in[i];
             count = 1;
         }
-        else {
+        else
+        {
             ++count; // run is not over yet.
         }
     }
@@ -393,9 +430,9 @@ int rleCpu(int *in, int n, int* symbolsOut, int* countsOut){
 }
 
 // On the CPU do preparation to run parle, launch PARLE on GPU, and then transfer the result data to the CPU. 
-int parleHost(int *h_in, int n,
-    int* h_symbolsOut,
-    int* h_countsOut){
+int parleHost(uint32_t *h_in, int n,
+    uint32_t* h_symbolsOut,
+    uint32_t* h_countsOut){
 
     int h_totalRuns;
 
@@ -413,15 +450,15 @@ int parleHost(int *h_in, int n,
     return h_totalRuns;
 }
 
-void scan(int* d_in, int* d_out, int N) {
+void scan(uint32_t* d_in, uint32_t* d_out, int N) {
     pp::prefix_inclusive(d_in, d_in + N, d_out);
 }
 
 // run parle on the GPU
-void parleDevice(int *d_in, int n,
-    int* d_symbolsOut,
-    int* d_countsOut,
-    int* d_totalRuns
+void parleDevice(uint32_t*d_in, int32_t n,
+    uint32_t* d_symbolsOut,
+    uint32_t* d_countsOut,
+    uint32_t* d_totalRuns
     ){
     hemi::cudaLaunch(maskKernel, d_in, d_backwardMask, n);
     scan(d_backwardMask, d_scannedBackwardMask, n);
