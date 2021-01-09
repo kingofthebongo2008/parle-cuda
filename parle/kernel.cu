@@ -303,6 +303,17 @@ int main(){
             const auto pitch     = image.row_pitch();
             const auto width     = image.width() * 4;
 
+            //invert the image for webgl
+
+            std::vector<uint32_t> ints(s);
+            for (auto i = 0; i < image.height(); ++i)
+            {
+                const uint32_t* src = &bytes[0] + i * image.width();
+                    uint32_t*   dst = &ints[0]  + (image.height() - 1 - i) * image.width();
+
+                std::memcpy(dst, src, image.row_pitch());
+            }
+
             std::vector<uint32_t> symbols(s);
             std::vector<uint32_t> symbols_count(s);
 
@@ -319,12 +330,12 @@ int main(){
             }
             #endif
 
-            int results = rleCpu(bytes, s, &symbols[0], &symbols_count[0]);
+            int results = rleCpu(&ints[0], s, &symbols[0], &symbols_count[0]);
 
             symbols.resize(results);
             symbols_count.resize(results);
 
-            #define EXPORT_DATA1
+            #define EXPORT_DATA
 
             #if defined(EXPORT_DATA)
             std::cout << "const symbols = new Uint32Array( [ " << std::endl;
@@ -356,7 +367,7 @@ int main(){
             #endif
             
             g_decompressed = new uint32_t[MAX_N];
-            verifyCompression(bytes, s, &symbols[0], &symbols_count[0], results);
+            verifyCompression(&ints[0], s, &symbols[0], &symbols_count[0], results);
 
             return 0;
     
