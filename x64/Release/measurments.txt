@@ -1,0 +1,48 @@
+profile random CPU
+For n = 10000, in time 14.72700 microseconds
+For n = 50000, in time 69.24600 microseconds
+For n = 100000, in time 139.31100 microseconds
+For n = 200000, in time 277.58100 microseconds
+For n = 500000, in time 696.93300 microseconds
+For n = 1000000, in time 1416.89800 microseconds
+For n = 2000000, in time 2864.13400 microseconds
+For n = 5000000, in time 7150.18000 microseconds
+For n = 10000000, in time 14278.51900 microseconds
+For n = 20000000, in time 28672.52900 microseconds
+For n = 40000000, in time 57636.57900 microseconds
+profile compressible CPU
+For n = 10000, in time 17.05600 microseconds
+For n = 50000, in time 85.88000 microseconds
+For n = 100000, in time 170.04000 microseconds
+For n = 200000, in time 339.85800 microseconds
+For n = 500000, in time 856.32500 microseconds
+For n = 1000000, in time 1716.45100 microseconds
+For n = 2000000, in time 3434.47800 microseconds
+For n = 5000000, in time 8581.50400 microseconds
+For n = 10000000, in time 17174.67600 microseconds
+For n = 20000000, in time 34426.34900 microseconds
+For n = 40000000, in time 68876.05600 microseconds
+profile random GPU
+For n = 10000, in time 23.11264 microseconds
+For n = 50000, in time 25.55616 microseconds
+For n = 100000, in time 30.17728 microseconds
+For n = 200000, in time 46.97088 microseconds
+For n = 500000, in time 118.36992 microseconds
+For n = 1000000, in time 229.68321 microseconds
+For n = 2000000, in time 447.08643 microseconds
+For n = 5000000, in time 1090.82629 microseconds
+For n = 10000000, in time 2199.22314 microseconds
+For n = 20000000, in time 4494.26416 microseconds
+For n = 40000000, in time 9246.11914 microseconds
+profile compressible GPU
+For n = 10000, in time 17.34912 microseconds
+For n = 50000, in time 17.09792 microseconds
+For n = 100000, in time 18.57888 microseconds
+For n = 200000, in time 28.66816 microseconds
+For n = 500000, in time 78.04639 microseconds
+For n = 1000000, in time 157.85857 microseconds
+For n = 2000000, in time 311.03043 microseconds
+For n = 5000000, in time 750.20734 microseconds
+For n = 10000000, in time 1502.65845 microseconds
+For n = 20000000, in time 3026.27661 microseconds
+For n = 40000000, in time 6081.72021 microseconds
